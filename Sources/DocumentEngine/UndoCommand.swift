@@ -23,6 +23,52 @@ struct AnnotationEditCommand: UndoCommand {
     func redo() { apply(after) }
 }
 
+/// Inserting a new annotation (image or text box) onto a page (page-scoped, §5).
+/// Idempotent by id on `redo`, matching the ink undo stack's pattern: the initial
+/// `perform()` call applies the insert once, and later redo-after-undo cycles must
+/// not duplicate it.
+struct AnnotationInsertCommand: UndoCommand {
+    let page: Page
+    let annotation: Annotation
+
+    var estimatedByteCost: Int {
+        annotation.content.utf8.count + 256
+    }
+
+    func redo() {
+        if !page.meta.annotations.contains(where: { $0.id == annotation.id }) {
+            page.meta.annotations.append(annotation)
+        }
+    }
+
+    func undo() {
+        page.meta.annotations.removeAll { $0.id == annotation.id }
+    }
+}
+
+/// Deleting an existing annotation from a page (page-scoped, §5). The image file
+/// backing an `.image` annotation, if any, is left on disk until the command is
+/// evicted from the undo stack or the page is otherwise known to be done with it —
+/// deleting it eagerly here would break undo.
+struct AnnotationDeleteCommand: UndoCommand {
+    let page: Page
+    let annotation: Annotation
+
+    var estimatedByteCost: Int {
+        annotation.content.utf8.count + 256
+    }
+
+    func redo() {
+        page.meta.annotations.removeAll { $0.id == annotation.id }
+    }
+
+    func undo() {
+        if !page.meta.annotations.contains(where: { $0.id == annotation.id }) {
+            page.meta.annotations.append(annotation)
+        }
+    }
+}
+
 /// Page insert/delete/reorder, document import/removal, template changes
 /// (notebook-scoped, §5).
 struct NotebookStructureCommand: UndoCommand {

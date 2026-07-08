@@ -1,5 +1,8 @@
 import Foundation
 import PDFKit
+import PencilKit
+import UIKit
+import Vision
 
 struct IndexingJob {
     let notebookID: UUID
@@ -18,11 +21,15 @@ struct IndexingJob {
 final class IndexingPipeline {
     private let indexStore: IndexStore
     private let queue = DispatchQueue(label: "com.amancisodia.NotebookApp.indexing", qos: .background)
+    // NSCache rather than a plain dictionary: a long session that indexes many
+    // different notebooks would otherwise grow this unboundedly (§11's memory
+    // ceiling applies here too) — NSCache evicts under memory pressure instead.
+    private let pdfDocumentCache = NSCache<NSURL, PDFDocument>()
 
     /// v1.2 feature flag (§13): handwriting OCR ships later. Flipping this on is the
     /// only change needed once Vision-based OCR is wired up — everything else in this
     /// pipeline (enqueue, dedup via contentHash, FTS upsert) already exists from v1.0.
-    var ocrEnabled = false
+    var ocrEnabled = true
 
     init(indexStore: IndexStore) {
         self.indexStore = indexStore
@@ -37,6 +44,10 @@ final class IndexingPipeline {
     }
 
     private func process(_ job: IndexingJob) {
+        if (try? indexStore.isIndexed(pageID: job.pageID, contentHash: job.contentHash)) == true {
+            return
+        }
+
         var textParts: [String] = []
         textParts.append(contentsOf: extractAnnotationText(job: job))
         if let pdfText = extractPDFLayerText(job: job) {
@@ -63,7 +74,7 @@ final class IndexingPipeline {
 
     private func extractPDFLayerText(job: IndexingJob) -> String? {
         guard let pdfPageIndex = job.pdfPageIndex,
-              let pdfDocument = PDFDocument(url: PackageLayout.sourcePDFURL(package: job.packageURL)),
+              let pdfDocument = pdfDocument(for: job.packageURL),
               let pdfPage = pdfDocument.page(at: pdfPageIndex),
               let text = pdfPage.string, !text.isEmpty else {
             return nil
@@ -71,13 +82,49 @@ final class IndexingPipeline {
         return text
     }
 
-    /// v1.2 (§8, §13): on-device handwriting OCR via Apple's Vision framework — no
-    /// server, no privacy exposure, consistent with the no-backend v1 architecture.
-    /// Left as a stub: rasterizing `PKDrawing` to a `CGImage` for `VNRecognizeTextRequest`
-    /// input needs `UIGraphicsImageRenderer`, which is straightforward but out of scope
-    /// until `ocrEnabled` flips on.
+    private func pdfDocument(for packageURL: URL) -> PDFDocument? {
+        let sourceURL = PackageLayout.sourcePDFURL(package: packageURL) as NSURL
+        if let cached = pdfDocumentCache.object(forKey: sourceURL) {
+            return cached
+        }
+        guard let document = PDFDocument(url: sourceURL as URL) else { return nil }
+        pdfDocumentCache.setObject(document, forKey: sourceURL)
+        return document
+    }
+
     private func runHandwritingOCR(job: IndexingJob) -> [String] {
-        []
+        guard let drawingData = try? Data(contentsOf: PackageLayout.drawingDataURL(package: job.packageURL, pageID: job.pageID)),
+              let drawing = try? PKDrawing(data: drawingData),
+              !drawing.strokes.isEmpty else {
+            return []
+        }
+
+        let drawingBounds = drawing.bounds.insetBy(dx: -24, dy: -24)
+        guard drawingBounds.width > 1, drawingBounds.height > 1 else { return [] }
+
+        let transparentInk = drawing.image(from: drawingBounds, scale: 2)
+        let renderer = UIGraphicsImageRenderer(size: transparentInk.size)
+        let ocrImage = renderer.image { context in
+            UIColor.white.setFill()
+            context.cgContext.fill(CGRect(origin: .zero, size: transparentInk.size))
+            transparentInk.draw(in: CGRect(origin: .zero, size: transparentInk.size))
+        }
+        guard let cgImage = ocrImage.cgImage else { return [] }
+
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            return []
+        }
+
+        return request.results?.compactMap { observation in
+            observation.topCandidates(1).first?.string
+        } ?? []
     }
 
     /// §8, §10: a full rebuild ("index.sqlite missing or corrupt") is just

@@ -5,11 +5,14 @@ import Foundation
 /// pages only"), pages are loaded lazily via `NotebookPackage`, not all at once.
 @MainActor
 final class Notebook: ObservableObject {
-    @Published private(set) var manifest: Manifest
+    @Published private(set) var manifest: Manifest {
+        didSet { rebuildPageIndex() }
+    }
     @Published private(set) var loadedPages: [UUID: Page] = [:]
 
     let packageURL: URL
     private(set) var undoStack: NotebookUndoStack
+    private var pageIndexByID: [UUID: Int] = [:]
 
     var id: UUID { manifest.notebookID }
 
@@ -23,10 +26,15 @@ final class Notebook: ObservableObject {
         self.manifest = manifest
         self.packageURL = packageURL
         self.undoStack = NotebookUndoStack(notebookID: manifest.notebookID)
+        rebuildPageIndex()
     }
 
     func page(for id: UUID) -> Page? {
         loadedPages[id]
+    }
+
+    func pageIndex(for id: UUID) -> Int? {
+        pageIndexByID[id]
     }
 
     func registerLoaded(_ page: Page) {
@@ -69,5 +77,9 @@ final class Notebook: ObservableObject {
 
     func replaceManifest(_ newManifest: Manifest) {
         self.manifest = newManifest
+    }
+
+    private func rebuildPageIndex() {
+        pageIndexByID = Dictionary(uniqueKeysWithValues: manifest.pageOrder.enumerated().map { ($0.element, $0.offset) })
     }
 }

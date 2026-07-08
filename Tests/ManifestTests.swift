@@ -35,6 +35,27 @@ final class ManifestTests: XCTestCase {
         }
     }
 
+    func testPackageLoaderDoesNotRecoverUnsupportedFutureManifest() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let packageURL = root.appendingPathComponent("Future.notepkg")
+        try FileManager.default.createDirectory(at: packageURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let pageID = UUID()
+        try NotebookPackage.insertBlankPage(package: packageURL, pageID: pageID)
+        var manifest = Manifest(title: "Future", source: .init(type: .none, file: "", sha256: ""), pageOrder: [pageID])
+        manifest.formatVersion = Manifest.currentFormatVersion + 1
+        try NotebookPackage.writeManifest(manifest, package: packageURL)
+
+        XCTAssertThrowsError(try NotebookPackage.loadManifest(package: packageURL)) { error in
+            guard let packageError = error as? NotebookPackage.PackageError,
+                  case .unsupportedManifestVersion = packageError else {
+                XCTFail("Expected unsupportedManifestVersion, got \(error)")
+                return
+            }
+        }
+    }
+
     /// §3.1: page identity lives in filenames (UUIDs); order lives only in the
     /// manifest. Reordering must not touch page identity.
     func testReorderingPagesDoesNotChangeIdentity() {

@@ -5,22 +5,41 @@ struct NotebookListView: View {
     @ObservedObject var library: LibraryViewModel
     @State private var showingImporter = false
     @State private var importJob: ImportJob?
+    @State private var showingWorkspace = false
 
     var body: some View {
         Group {
-            if let coordinator = library.openCoordinator {
-                NotebookDetailView(coordinator: coordinator, onClose: library.close)
+            if showingWorkspace, !library.openCoordinators.isEmpty {
+                NotebookWorkspaceView(library: library) {
+                    showingWorkspace = false
+                }
             } else {
                 NavigationStack {
                     List(library.notebooks) { summary in
                         Button {
                             library.open(summary)
+                            showingWorkspace = true
                         } label: {
-                            Text(summary.title)
+                            HStack {
+                                Text(summary.title)
+                                Spacer()
+                                if library.openCoordinators.contains(where: { $0.notebook.id == summary.id }) {
+                                    Text("Open")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
                     }
                     .navigationTitle("Notebooks")
                     .toolbar {
+                        if !library.openCoordinators.isEmpty {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Tabs") {
+                                    showingWorkspace = true
+                                }
+                            }
+                        }
                         ToolbarItem(placement: .primaryAction) {
                             Button {
                                 showingImporter = true
@@ -32,18 +51,47 @@ struct NotebookListView: View {
                 }
             }
         }
-        .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.pdf]) { result in
+        .onChange(of: library.openCoordinators.count) { _, count in
+            if count == 0 {
+                showingWorkspace = false
+            }
+        }
+        .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.pdf, .image]) { result in
             guard case .success(let url) = result else { return }
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
             let title = url.deletingPathExtension().lastPathComponent
-            importJob = library.importPDF(at: url, title: title)
+            if isImage(url) {
+                importJob = library.importImage(at: url, title: title)
+            } else {
+                importJob = library.importPDF(at: url, title: title)
+            }
         }
         .overlay(alignment: .bottom) {
             if let importJob {
                 ImportProgressOverlay(job: importJob) {
                     library.rescan()
+                    openImportedNotebookIfNeeded(importJob)
                     self.importJob = nil
                 }
             }
+        }
+    }
+
+    private func isImage(_ url: URL) -> Bool {
+        UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true
+    }
+
+    private func openImportedNotebookIfNeeded(_ job: ImportJob) {
+        guard case .completed(let packageURL) = job.state else { return }
+        library.rescan()
+        if let summary = library.notebooks.first(where: { $0.packageURL == packageURL }) {
+            library.open(summary)
+            showingWorkspace = true
         }
     }
 }

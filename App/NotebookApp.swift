@@ -12,8 +12,8 @@ struct NotebookApp: App {
         .onChange(of: scenePhase) { _, newPhase in
             // Backgrounding flushes immediately, bypassing the debounce — one of the
             // two moments users lose data in badly built apps (§5 note 4).
-            guard newPhase == .background, let coordinator = library.openCoordinator else { return }
-            Task { await coordinator.flushAllImmediately() }
+            guard newPhase == .background else { return }
+            Task { await library.flushAllOpenImmediately() }
         }
     }
 }

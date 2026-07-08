@@ -10,6 +10,9 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift.git
     from: 6.29.0
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: 0.9.19
 
 targets:
   NotebookApp:
@@ -22,6 +25,8 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+      - package: ZIPFoundation
+        product: ZIPFoundation
     info:
       path: Generated/Info.plist
       properties:

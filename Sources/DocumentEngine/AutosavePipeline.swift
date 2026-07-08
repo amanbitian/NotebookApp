@@ -45,6 +45,20 @@ final class AutosavePipeline {
     /// snapshot below, which only fires once per clean→dirty transition and is a small
     /// file copy (§7.2) — everything else here is in-memory.
     func handleDrawingChanged(page: Page) {
+        markDirtyAndDebounce(page: page)
+    }
+
+    /// Same dirty/debounce path as `handleDrawingChanged`, for annotation edits
+    /// (insert/move/delete image or text annotations — §5's undo scope table lists
+    /// these as page-scoped ops alongside ink). Annotations live in the same
+    /// `meta.json` as the drawing's hash, so a page carrying only an annotation edit
+    /// still needs to flow through autosave — there is no separate write path for
+    /// "annotations only."
+    func handleAnnotationsChanged(page: Page) {
+        markDirtyAndDebounce(page: page)
+    }
+
+    private func markDirtyAndDebounce(page: Page) {
         let wasClean = !page.isDirty
         page.markDirty()
         lastActivity[page.id] = Date()
@@ -53,7 +67,15 @@ final class AutosavePipeline {
         if wasClean {
             // Snapshot the last-synced bytes as this page's merge base *before* the
             // debounced write below overwrites drawing.data (§7.2).
-            try? MergeBaseStore.snapshotIfNeeded(notebookID: notebookID, pageID: page.id, packageURL: packageURL)
+            enqueueMergeBaseSnapshot(pageID: page.id)
+        }
+    }
+
+    private func enqueueMergeBaseSnapshot(pageID: UUID) {
+        let notebookID = self.notebookID
+        let packageURL = self.packageURL
+        backgroundQueue.async {
+            try? MergeBaseStore.snapshotIfNeeded(notebookID: notebookID, pageID: pageID, packageURL: packageURL)
         }
     }
 
@@ -103,11 +125,12 @@ final class AutosavePipeline {
         let packageURL = self.packageURL
 
         do {
-            let hash = try await serializeAndWrite(packageURL: packageURL, pageID: pageID, drawing: drawing, annotations: annotations)
+            let meta = try await serializeAndWrite(packageURL: packageURL, pageID: pageID, drawing: drawing, annotations: annotations)
 
             // Journal entry strictly after the write succeeds — never before.
-            try journalStore.appendEntry(notebookID: notebookID, pageID: pageID.uuidString, contentHash: hash)
+            try journalStore.appendEntry(notebookID: notebookID, pageID: pageID.uuidString, contentHash: meta.contentHash)
 
+            page.meta = meta
             page.clearDirty()
             retryBackoffSeconds[pageID] = nil
             retryTasks[pageID]?.cancel()
@@ -116,7 +139,7 @@ final class AutosavePipeline {
             // Journal row now exists — this is the hand-off point the design calls
             // out twice: sync picks up the dirty page in background (§2), and search
             // indexing enqueues its job only once the journal row exists (§8).
-            onPageFlushed?(page, hash)
+            onPageFlushed?(page, meta.contentHash)
         } catch {
             scheduleRetry(page: page)
         }
@@ -124,14 +147,14 @@ final class AutosavePipeline {
 
     private func serializeAndWrite(
         packageURL: URL, pageID: UUID, drawing: PKDrawing, annotations: [Annotation]
-    ) async throws -> String {
+    ) async throws -> PageMeta {
         try await withCheckedThrowingContinuation { continuation in
             backgroundQueue.async {
                 do {
-                    let hash = try NotebookPackage.persistPage(
+                    let meta = try NotebookPackage.persistPage(
                         package: packageURL, pageID: pageID, drawing: drawing, annotations: annotations
                     )
-                    continuation.resume(returning: hash)
+                    continuation.resume(returning: meta)
                 } catch {
                     continuation.resume(throwing: error)
                 }

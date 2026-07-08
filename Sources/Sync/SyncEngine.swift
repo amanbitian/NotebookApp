@@ -112,7 +112,7 @@ final class SyncEngine {
             applyIncomingDrawing(
                 change.remoteDrawing, annotations: change.remoteMeta.annotations,
                 pageID: pageUUID, packageURL: packageURL, cloud: cloud,
-                sourceHash: change.remoteMeta.contentHash, sourceDeviceID: change.remoteMeta.deviceID,
+                sourceDeviceID: change.remoteMeta.deviceID,
                 sourceChangedAt: change.remoteMeta.lastModified
             )
 
@@ -120,7 +120,7 @@ final class SyncEngine {
             applyIncomingDrawing(
                 merged, annotations: localMeta.annotations,
                 pageID: pageUUID, packageURL: packageURL, cloud: cloud,
-                sourceHash: nil, sourceDeviceID: DeviceIdentity.current, sourceChangedAt: Date()
+                sourceDeviceID: DeviceIdentity.current, sourceChangedAt: Date()
             )
 
         case .bothVersionsKept(let conflict):
@@ -144,19 +144,20 @@ final class SyncEngine {
 
     private func applyIncomingDrawing(
         _ drawing: PKDrawing, annotations: [Annotation], pageID: UUID, packageURL: URL, cloud: SyncCloud,
-        sourceHash: String?, sourceDeviceID: String, sourceChangedAt: Date
+        sourceDeviceID: String, sourceChangedAt: Date
     ) {
-        guard let hash = try? NotebookPackage.persistPage(package: packageURL, pageID: pageID, drawing: drawing, annotations: annotations) else {
+        guard let meta = try? NotebookPackage.persistPage(package: packageURL, pageID: pageID, drawing: drawing, annotations: annotations) else {
             return
         }
-        try? journalStore.appendEntry(notebookID: notebookID, pageID: pageID.uuidString, contentHash: hash, deviceID: sourceDeviceID, changedAt: sourceChangedAt)
+        try? journalStore.appendEntry(notebookID: notebookID, pageID: pageID.uuidString, contentHash: meta.contentHash, deviceID: sourceDeviceID, changedAt: sourceChangedAt)
         if let latestSeq = try? journalStore.latestEntry(notebookID: notebookID, pageID: pageID.uuidString)?.seq {
-            try? journalStore.setCheckpoint(cloud: cloud, notebookID: notebookID, pageID: pageID.uuidString, syncedHash: hash, syncedSeq: latestSeq)
+            try? journalStore.setCheckpoint(cloud: cloud, notebookID: notebookID, pageID: pageID.uuidString, syncedHash: meta.contentHash, syncedSeq: latestSeq)
         }
         try? MergeBaseStore.clear(notebookID: notebookID, pageID: pageID)
 
         if let page = notebook?.page(for: pageID) {
             page.drawing = drawing
+            page.meta = meta
             page.clearDirty()
             page.setConflict(nil)
         }
@@ -169,8 +170,13 @@ final class SyncEngine {
         let remoteIsNewer = remote.remoteMeta.lastModified > localMeta.lastModified
         if remoteIsNewer {
             try? ConflictVersionStore.store(notebookID: notebookID, pageID: pageID, hash: localMeta.contentHash, drawing: localDrawing)
-            _ = try? NotebookPackage.persistPage(package: packageURL, pageID: pageID, drawing: remote.remoteDrawing, annotations: remote.remoteMeta.annotations)
-            notebook?.page(for: pageID)?.drawing = remote.remoteDrawing
+            let activeMeta = try? NotebookPackage.persistPage(package: packageURL, pageID: pageID, drawing: remote.remoteDrawing, annotations: remote.remoteMeta.annotations)
+            if let page = notebook?.page(for: pageID) {
+                page.drawing = remote.remoteDrawing
+                if let activeMeta {
+                    page.meta = activeMeta
+                }
+            }
         } else {
             try? ConflictVersionStore.store(notebookID: notebookID, pageID: pageID, hash: remote.remoteMeta.contentHash, drawing: remote.remoteDrawing)
             // Local page stays active; nothing to overwrite on disk.

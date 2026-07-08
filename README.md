@@ -77,22 +77,36 @@ Because nothing here has run, prioritize verification in roughly this order:
    (the doc's own resurrection example, partial-erase handling) but can't validate the
    signature's real-world false-positive/false-negative rate — that needs actual
    PencilKit strokes from a device.
-4. **Not implemented — deliberately deferred per §13 phasing:**
+4. **Still needs product wiring / external credentials:**
    - Google OAuth token acquisition (`GoogleAuthTokenProviding` is a protocol seam
      only — no concrete `ASWebAuthenticationSession`/Google Sign-In implementation).
-     v1.1 scope.
-   - Handwriting OCR (`IndexingPipeline.runHandwritingOCR` is a stub returning `[]`).
-     v1.2 scope.
+     `NotebookCoordinator.configureGoogleDriveBackup(...)` now wires a token provider
+     into debounced Drive backup. The detail view includes a smoke-test sheet that
+     accepts a short-lived access token, but the app still needs a real Google client
+     setup before shipping.
+   - Handwriting OCR now uses Vision on-device and is enabled in `IndexingPipeline`.
+     Tune accuracy/performance on real PencilKit handwriting before trusting it broadly.
    - Zipped `.notepkg` Drive snapshots (`GoogleDriveAdapter.backupZippedPackage`
-     exists and works, but nothing calls it yet — no zip-creation code). v1.2 scope.
+     is backed by `PackageSnapshotBuilder` + `ZIPFoundation`; enable it with
+     `includeZippedPackage: true`.
    - Annotation-level conflict merging (only both-versions-kept fallback for
      annotations today). "Later" per §7.4.
    - DOCX/PPTX import (`ImportJob.importOfficeDocument` throws
      `ImportError.unsupportedFormat`). v2.x scope.
 5. **UI layer** (`Sources/UI/`) is a functional but minimal shell — enough to exercise
    the architecture end to end (import → open → draw → autosave → sync → export), not
-   a polished product UI. Toolbar, ink color/width picker, page thumbnails/grid view,
-   and template/paper selection (mentioned in §5's undo scope table) don't exist yet.
+   a polished product UI. Page thumbnails/grid view and template/paper selection
+   (mentioned in §5's undo scope table) don't exist yet.
+6. **Image annotations** (`AnnotationOverlayView.swift`, `PhotosPicker` in
+   `PageView.swift`) are new: insert via the photo-badge button, drag to move, tap the
+   × to delete. Images are stored as real files under `pages/<pageID>/images/` (§3.1
+   immutability rationale — inserted content, not derived data, so it belongs in the
+   synced package) and are drawn into flattened exports (`ExportJob.drawImageAnnotation`).
+   This closed a real pre-existing gap: annotations (including the already-modeled
+   `.text` kind) had no UI to create them and no autosave trigger — `AutosavePipeline`
+   only fired on ink changes. `AutosavePipeline.handleAnnotationsChanged` now covers
+   annotation-only edits. Resize isn't implemented (drag-to-move only), and there's no
+   OCR/search over inserted image content.
 
 ## Running the tests
 

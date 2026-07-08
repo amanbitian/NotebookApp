@@ -25,15 +25,18 @@ enum ConflictResolutionActions {
         let stashedHash = conflict.localSnapshotHash == activeHash ? conflict.remoteSnapshotHash : conflict.localSnapshotHash
         guard let stashedDrawing = ConflictVersionStore.load(notebookID: notebook.id, pageID: pageID, hash: stashedHash) else { return }
 
-        guard let newHash = try? NotebookPackage.persistPage(
+        guard let newMeta = try? NotebookPackage.persistPage(
             package: packageURL, pageID: pageID, drawing: stashedDrawing,
             annotations: notebook.page(for: pageID)?.meta.annotations ?? []
         ) else { return }
-        try? journalStore.appendEntry(notebookID: notebook.id, pageID: pageID.uuidString, contentHash: newHash)
+        try? journalStore.appendEntry(notebookID: notebook.id, pageID: pageID.uuidString, contentHash: newMeta.contentHash)
         try? ConflictVersionStore.discard(notebookID: notebook.id, pageID: pageID, hash: stashedHash)
 
-        notebook.page(for: pageID)?.drawing = stashedDrawing
-        notebook.page(for: pageID)?.setConflict(nil)
+        if let page = notebook.page(for: pageID) {
+            page.drawing = stashedDrawing
+            page.meta = newMeta
+            page.setConflict(nil)
+        }
     }
 
     /// "Keep both as two pages": materialize the stashed version as a brand-new page
@@ -48,12 +51,12 @@ enum ConflictResolutionActions {
         guard let stashedDrawing = ConflictVersionStore.load(notebookID: notebook.id, pageID: pageID, hash: stashedHash) else { return }
 
         let newPageID = UUID()
-        guard let newHash = try? NotebookPackage.persistPage(
+        guard let newMeta = try? NotebookPackage.persistPage(
             package: packageURL, pageID: newPageID, drawing: stashedDrawing, annotations: []
         ) else { return }
-        try? journalStore.appendEntry(notebookID: notebook.id, pageID: newPageID.uuidString, contentHash: newHash)
+        try? journalStore.appendEntry(notebookID: notebook.id, pageID: newPageID.uuidString, contentHash: newMeta.contentHash)
 
-        let insertIndex = (notebook.pageOrder.firstIndex(of: pageID) ?? notebook.pageOrder.count - 1) + 1
+        let insertIndex = (notebook.pageIndex(for: pageID) ?? notebook.pageOrder.count - 1) + 1
         notebook.undoStack.perform(NotebookStructureCommand(
             estimatedByteCost: stashedDrawing.dataRepresentation().count,
             performUndo: { [weak notebook] in notebook?.removePage(newPageID) },

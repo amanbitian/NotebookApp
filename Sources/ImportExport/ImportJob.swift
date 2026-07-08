@@ -22,10 +22,15 @@ final class ImportJob: ObservableObject {
 
     /// PDF → copy as `source.pdf`, create page UUIDs + manifest (§9). Fast, streaming
     /// page count — the heavy lifting is in `NotebookPackage.createFromPDF`.
-    func importPDF(at sourceURL: URL, title: String, into rootDirectory: URL) {
+    func importPDF(at sourceURL: URL, title: String, into rootDirectory: URL, cleanupSourceWhenFinished: Bool = false) {
         task?.cancel()
         state = .inProgress(completed: 0, total: 1)
         task = Task.detached(priority: .utility) { [weak self] in
+            defer {
+                if cleanupSourceWhenFinished {
+                    try? FileManager.default.removeItem(at: sourceURL)
+                }
+            }
             do {
                 let created = try NotebookPackage.createFromPDF(sourcePDFURL: sourceURL, title: title, in: rootDirectory)
                 await self?.finish(.completed(packageURL: created.packageURL))

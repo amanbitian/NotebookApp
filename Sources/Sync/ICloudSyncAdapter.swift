@@ -17,6 +17,7 @@ final class ICloudSyncAdapter: NSObject, TwoWaySyncAdapter {
     private var metadataQuery: NSMetadataQuery?
     private var onChange: ((RemotePageChange) -> Void)?
     private var observedNotebookID: UUID?
+    private var observedPackageURL: URL?
     private var lastSeenModificationDates: [String: Date] = [:]
 
     static func ubiquityContainerURL(containerIdentifier: String? = nil) -> URL? {
@@ -57,6 +58,8 @@ final class ICloudSyncAdapter: NSObject, TwoWaySyncAdapter {
         stopObservingChanges(notebookID: notebookID)
         self.onChange = onChange
         self.observedNotebookID = notebookID
+        self.observedPackageURL = packageURL.standardizedFileURL
+        self.lastSeenModificationDates.removeAll()
 
         let query = NSMetadataQuery()
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
@@ -84,6 +87,8 @@ final class ICloudSyncAdapter: NSObject, TwoWaySyncAdapter {
         metadataQuery = nil
         onChange = nil
         observedNotebookID = nil
+        observedPackageURL = nil
+        lastSeenModificationDates.removeAll()
     }
 
     @objc private func handleQueryUpdate(_ notification: Notification) {
@@ -93,6 +98,7 @@ final class ICloudSyncAdapter: NSObject, TwoWaySyncAdapter {
 
         for item in query.results.compactMap({ $0 as? NSMetadataItem }) {
             guard let itemURL = item.value(forAttribute: NSMetadataItemURLKey) as? URL else { continue }
+            guard isInsideObservedPackage(itemURL) else { continue }
             guard let downloaded = item.value(forAttribute: NSMetadataUbiquitousItemDownloadingStatusKey) as? String,
                   downloaded == NSMetadataUbiquitousItemDownloadingStatusCurrent else {
                 // Not fully downloaded yet — the query will fire again once it is.
@@ -103,6 +109,7 @@ final class ICloudSyncAdapter: NSObject, TwoWaySyncAdapter {
     }
 
     private func processChangedMeta(at metaURL: URL) {
+        guard isInsideObservedPackage(metaURL) else { return }
         // meta.json lives at pages/<pageUUID>/meta.json
         let pageFolder = metaURL.deletingLastPathComponent()
         guard let pageID = UUID(uuidString: pageFolder.lastPathComponent) else { return }
@@ -127,5 +134,12 @@ final class ICloudSyncAdapter: NSObject, TwoWaySyncAdapter {
         }
 
         onChange?(RemotePageChange(pageID: pageID.uuidString, remoteMeta: meta, remoteDrawing: drawing))
+    }
+
+    private func isInsideObservedPackage(_ url: URL) -> Bool {
+        guard let observedPackageURL else { return false }
+        let observedPath = observedPackageURL.standardizedFileURL.path
+        let candidatePath = url.standardizedFileURL.path
+        return candidatePath == observedPath || candidatePath.hasPrefix(observedPath + "/")
     }
 }

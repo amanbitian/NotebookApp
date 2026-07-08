@@ -31,6 +31,15 @@ final class IndexStoreTests: XCTestCase {
         XCTAssertEqual(try store.search("dogs").count, 1)
     }
 
+    func testIsIndexedChecksCurrentHash() throws {
+        let notebookID = UUID()
+        let pageID = UUID()
+        try store.upsert(notebookID: notebookID, pageID: pageID, contentHash: "h1", text: "cached text")
+
+        XCTAssertTrue(try store.isIndexed(pageID: pageID, contentHash: "h1"))
+        XCTAssertFalse(try store.isIndexed(pageID: pageID, contentHash: "h2"))
+    }
+
     func testRebuildFromScratchClearsIndex() throws {
         let notebookID = UUID()
         let pageID = UUID()

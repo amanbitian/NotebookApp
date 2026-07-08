@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 struct NotebookSummary: Identifiable, Equatable {
     let id: UUID
@@ -14,10 +15,16 @@ struct NotebookSummary: Identifiable, Equatable {
 @MainActor
 final class LibraryViewModel: ObservableObject {
     @Published private(set) var notebooks: [NotebookSummary] = []
-    @Published private(set) var openCoordinator: NotebookCoordinator?
+    @Published private(set) var openCoordinators: [NotebookCoordinator] = []
+    @Published var activeNotebookID: UUID?
 
     private let indexStore: IndexStore?
     let rootDirectory: URL
+
+    var activeCoordinator: NotebookCoordinator? {
+        guard let activeNotebookID else { return openCoordinators.first }
+        return openCoordinators.first { $0.notebook.id == activeNotebookID }
+    }
 
     init() {
         rootDirectory = Self.resolveRootDirectory()
@@ -54,18 +61,80 @@ final class LibraryViewModel: ObservableObject {
     @discardableResult
     func importPDF(at sourceURL: URL, title: String) -> ImportJob {
         let job = ImportJob()
-        job.importPDF(at: sourceURL, title: title, into: rootDirectory)
+        if let importURL = try? Self.copyToTemporaryImportURL(sourceURL) {
+            job.importPDF(at: importURL, title: title, into: rootDirectory, cleanupSourceWhenFinished: true)
+        } else {
+            job.importPDF(at: sourceURL, title: title, into: rootDirectory)
+        }
         return job
     }
 
+    @discardableResult
+    func importImage(at sourceURL: URL, title: String) -> ImportJob? {
+        let job = ImportJob()
+        guard let image = UIImage(contentsOfFile: sourceURL.path) else {
+            return nil
+        }
+        job.importImages([image], title: title, into: rootDirectory)
+        return job
+    }
+
+    private static func copyToTemporaryImportURL(_ sourceURL: URL) throws -> URL {
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(sourceURL.pathExtension)
+        try FileManager.default.copyItem(at: sourceURL, to: destination)
+        return destination
+    }
+
     func open(_ summary: NotebookSummary) {
+        if openCoordinators.contains(where: { $0.notebook.id == summary.id }) {
+            activeNotebookID = summary.id
+            return
+        }
+
         guard let indexStore else { return }
         guard let recovered = try? NotebookPackage.loadManifest(package: summary.packageURL) else { return }
         let notebook = Notebook(manifest: recovered.manifest, packageURL: summary.packageURL)
-        openCoordinator = try? NotebookCoordinator(notebook: notebook, indexStore: indexStore)
+        guard let coordinator = try? NotebookCoordinator(notebook: notebook, indexStore: indexStore) else { return }
+        openCoordinators.append(coordinator)
+        activeNotebookID = coordinator.notebook.id
     }
 
-    func close() {
-        openCoordinator = nil
+    func activate(_ coordinator: NotebookCoordinator) {
+        activeNotebookID = coordinator.notebook.id
+    }
+
+    /// Awaits the flush *before* dropping the coordinator — closing a tab is another
+    /// moment a page can be mid-debounce, same as page exit / app backgrounding
+    /// (§5 note 4). Firing the flush without awaiting it left a real window where
+    /// backgrounding or terminating right after a close could drop the final
+    /// autosave, since the coordinator was already gone from `openCoordinators` by
+    /// the time `flushAllOpenImmediately()` ran on backgrounding.
+    func close(_ coordinator: NotebookCoordinator) async {
+        await coordinator.flushAllImmediately()
+        openCoordinators.removeAll { $0.notebook.id == coordinator.notebook.id }
+        if activeNotebookID == coordinator.notebook.id {
+            activeNotebookID = openCoordinators.last?.notebook.id
+        }
+    }
+
+    func closeActive() async {
+        guard let activeCoordinator else { return }
+        await close(activeCoordinator)
+    }
+
+    func closeAll() async {
+        for coordinator in openCoordinators {
+            await coordinator.flushAllImmediately()
+        }
+        openCoordinators.removeAll()
+        activeNotebookID = nil
+    }
+
+    func flushAllOpenImmediately() async {
+        for coordinator in openCoordinators {
+            await coordinator.flushAllImmediately()
+        }
     }
 }

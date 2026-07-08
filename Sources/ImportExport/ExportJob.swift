@@ -33,7 +33,7 @@ final class ExportJob: ObservableObject {
         task = Task.detached(priority: .utility) { [weak self] in
             defer { Task { @MainActor [weak self] in self?.endBackgroundTask() } }
             do {
-                let outputURL = try Self.render(
+                let outputURL = try Self.renderPDFFile(
                     pageOrder: pageOrder, packageURL: packageURL, exportScale: exportScale,
                     progress: { completed in
                         Task { @MainActor [weak self] in self?.setProgress(completed: completed, total: pageOrder.count) }
@@ -73,7 +73,7 @@ final class ExportJob: ObservableObject {
         backgroundTaskID = .invalid
     }
 
-    nonisolated private static func render(
+    nonisolated static func renderPDFFile(
         pageOrder: [UUID], packageURL: URL, exportScale: CGFloat,
         progress: @escaping (Int) -> Void, isCancelled: @escaping () -> Bool
     ) throws -> URL {
@@ -120,8 +120,15 @@ final class ExportJob: ObservableObject {
 
         if let metaData = try? Data(contentsOf: PackageLayout.pageMetaURL(package: packageURL, pageID: pageID)),
            let meta = try? ManifestCoding.decoder.decode(PageMeta.self, from: metaData) {
-            for annotation in meta.annotations where annotation.kind == .text {
-                drawTextAnnotation(annotation, in: cgContext)
+            for annotation in meta.annotations {
+                switch annotation.kind {
+                case .text:
+                    drawTextAnnotation(annotation, in: cgContext)
+                case .image:
+                    drawImageAnnotation(annotation, pageID: pageID, packageURL: packageURL, in: cgContext)
+                case .shape:
+                    break
+                }
             }
         }
     }
@@ -130,6 +137,16 @@ final class ExportJob: ObservableObject {
         let attributed = NSAttributedString(string: annotation.content, attributes: [.font: UIFont.systemFont(ofSize: 12)])
         UIGraphicsPushContext(context)
         attributed.draw(in: annotation.frame)
+        UIGraphicsPopContext()
+    }
+
+    nonisolated private static func drawImageAnnotation(
+        _ annotation: Annotation, pageID: UUID, packageURL: URL, in context: CGContext
+    ) {
+        guard let data = try? NotebookPackage.loadImage(package: packageURL, pageID: pageID, fileName: annotation.content),
+              let image = UIImage(data: data) else { return }
+        UIGraphicsPushContext(context)
+        image.draw(in: annotation.frame)
         UIGraphicsPopContext()
     }
 }

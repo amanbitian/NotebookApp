@@ -51,6 +51,17 @@ final class IndexStore {
 
     /// Keyed by `(pageID, contentHash)` so a stale entry is simply overwritten on the
     /// next pass, and a full rebuild is just re-enqueueing every page (§8).
+    func isIndexed(pageID: UUID, contentHash: String) throws -> Bool {
+        try dbQueue.read { db in
+            let existingHash = try String.fetchOne(
+                db,
+                sql: "SELECT content_hash FROM indexed_pages WHERE page_id = ?",
+                arguments: [pageID.uuidString]
+            )
+            return existingHash == contentHash
+        }
+    }
+
     func upsert(notebookID: UUID, pageID: UUID, contentHash: String, text: String) throws {
         try dbQueue.write { db in
             let existingHash = try String.fetchOne(

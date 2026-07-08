@@ -30,6 +30,18 @@ enum PackageLayout {
         pageDirectory(package: package, pageID: pageID).appendingPathComponent("meta.json")
     }
 
+    /// Inserted-image annotations are user content, not derived data — unlike
+    /// thumbnails, they must reach other devices, so they live inside the synced page
+    /// folder rather than a local cache. Written once per image and never modified in
+    /// place, same immutability rationale as `source.pdf` (§3.1).
+    static func pageImagesDirectory(package: URL, pageID: UUID) -> URL {
+        pageDirectory(package: package, pageID: pageID).appendingPathComponent("images", isDirectory: true)
+    }
+
+    static func pageImageURL(package: URL, pageID: UUID, fileName: String) -> URL {
+        pageImagesDirectory(package: package, pageID: pageID).appendingPathComponent(fileName)
+    }
+
     // MARK: Local-only zone — `Application Support/notebooks/<notebookUUID>/`
 
     static func localStoreRoot(notebookID: UUID) throws -> URL {
