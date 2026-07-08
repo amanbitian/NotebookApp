@@ -98,15 +98,27 @@ Because nothing here has run, prioritize verification in roughly this order:
    a polished product UI. Page thumbnails/grid view and template/paper selection
    (mentioned in §5's undo scope table) don't exist yet.
 6. **Image annotations** (`AnnotationOverlayView.swift`, `PhotosPicker` in
-   `PageView.swift`) are new: insert via the photo-badge button, drag to move, tap the
-   × to delete. Images are stored as real files under `pages/<pageID>/images/` (§3.1
-   immutability rationale — inserted content, not derived data, so it belongs in the
-   synced package) and are drawn into flattened exports (`ExportJob.drawImageAnnotation`).
-   This closed a real pre-existing gap: annotations (including the already-modeled
-   `.text` kind) had no UI to create them and no autosave trigger — `AutosavePipeline`
-   only fired on ink changes. `AutosavePipeline.handleAnnotationsChanged` now covers
-   annotation-only edits. Resize isn't implemented (drag-to-move only), and there's no
-   OCR/search over inserted image content.
+   `PageView.swift`): insert via the photo-badge button, drag to move, resize/reposition
+   numerically or replace the image via the edit sheet, tap × to delete. Images are
+   stored as real files under `pages/<pageID>/images/` (§3.1 immutability rationale —
+   inserted content, not derived data, so it belongs in the synced package) and are
+   drawn into flattened exports (`ExportJob.drawImageAnnotation`). This closed a real
+   pre-existing gap: annotations (including the already-modeled `.text` kind) had no UI
+   to create them and no autosave trigger — `AutosavePipeline` only fired on ink
+   changes. `AutosavePipeline.handleAnnotationsChanged` now covers annotation-only
+   edits. There's still no OCR/search over inserted image content.
+7. **Multi-notebook workspace** (`NotebookWorkspaceView.swift`, `LibraryViewModel`):
+   several notebooks can be open at once as tabs instead of one at a time. This is why
+   `ICloudSyncAdapter`'s `NSMetadataQuery` had to be scoped to the specific package
+   being observed — unscoped, it would have attributed one open notebook's remote
+   changes to another the moment two synced notebooks were open simultaneously.
+   `LibraryViewModel.close`/`closeAll` are `async` and await each coordinator's final
+   flush before dropping it, for the same reason page exit and backgrounding do:
+   closing a tab is another moment a page can be mid-debounce (§5 note 4).
+8. **`IndexingPipeline`** caches parsed `PDFDocument`s per source URL (`NSCache`,
+   evicts under memory pressure) instead of re-parsing the source PDF for every page,
+   and skips re-indexing a page whose content hash hasn't changed (`IndexStore.isIndexed`)
+   — both matter more now that OCR runs by default.
 
 ## Running the tests
 
