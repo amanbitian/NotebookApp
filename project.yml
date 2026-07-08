@@ -1,0 +1,75 @@
+name: NotebookApp
+options:
+  bundleIdPrefix: com.amancisodia
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift.git
+    from: 6.29.0
+
+targets:
+  NotebookApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: App
+      - path: Sources
+    dependencies:
+      - package: GRDB
+        product: GRDB
+    info:
+      path: Generated/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        CFBundleDisplayName: Notebook
+        NSPhotoLibraryUsageDescription: "Used to import images as notebook pages."
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+    entitlements:
+      path: Generated/NotebookApp.entitlements
+      properties:
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.amancisodia.NotebookApp
+        com.apple.developer.icloud-services:
+          - CloudDocuments
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.com.amancisodia.NotebookApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amancisodia.NotebookApp
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "2"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        DEVELOPMENT_TEAM: ""
+
+  NotebookAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: NotebookApp
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+
+schemes:
+  NotebookApp:
+    build:
+      targets:
+        NotebookApp: all
+        NotebookAppTests: [test]
+    test:
+      targets:
+        - NotebookAppTests
+    run:
+      config: Debug
