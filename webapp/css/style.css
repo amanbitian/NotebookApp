@@ -1,0 +1,176 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: #f4f4f6;
+  color: #1a1a1a;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+#topbar h1 {
+  font-size: 16px;
+  margin: 0;
+  flex: 1;
+}
+
+.icon-button {
+  border: none;
+  background: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+main {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#libraryView {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+#libraryToolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+button, .button-like {
+  padding: 8px 14px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.button-like input { display: none; }
+
+#searchInput {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+#notebookList, #searchResults, #pageList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#notebookList li, #searchResults li {
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#notebookList li:hover, #searchResults li:hover {
+  border-color: #999;
+}
+
+#notebookView {
+  display: flex;
+  height: 100%;
+}
+
+#pageRail {
+  width: 140px;
+  border-right: 1px solid #e0e0e0;
+  background: #fff;
+  padding: 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+#pageList li {
+  padding: 8px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-size: 13px;
+}
+
+#pageList li.active {
+  background: #e8f0fe;
+  border-color: #a8c7fa;
+}
+
+#addPageButton {
+  margin-top: auto;
+}
+
+#canvasArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  flex-wrap: wrap;
+}
+
+.tool-button.active {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.badge {
+  background: #fdecea;
+  color: #b3261e;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+#canvasWrap {
+  flex: 1;
+  overflow: auto;
+  background: #ddd;
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+#pageCanvas {
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+  touch-action: none;
+  cursor: crosshair;
+}

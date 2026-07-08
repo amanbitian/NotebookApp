@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Notebook — Web Test Harness</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <button id="backButton" class="icon-button" title="Back to library" hidden>&larr;</button>
+      <h1 id="titleLabel">Notebooks</h1>
+      <div id="topbarActions"></div>
+    </header>
+
+    <main id="libraryView">
+      <div id="libraryToolbar">
+        <button id="newNotebookButton">+ Blank notebook</button>
+        <label class="button-like">
+          Import PDF
+          <input id="importPdfInput" type="file" accept="application/pdf" hidden />
+        </label>
+        <input id="searchInput" type="search" placeholder="Search all notebooks…" />
+      </div>
+      <ul id="notebookList"></ul>
+      <ul id="searchResults" hidden></ul>
+    </main>
+
+    <main id="notebookView" hidden>
+      <aside id="pageRail">
+        <ul id="pageList"></ul>
+        <button id="addPageButton">+ Page</button>
+      </aside>
+      <section id="canvasArea">
+        <div id="toolbar">
+          <button id="penTool" class="tool-button active" data-tool="pen">Pen</button>
+          <button id="eraserTool" class="tool-button" data-tool="eraser">Eraser</button>
+          <button id="textTool" class="tool-button" data-tool="text">Text</button>
+          <button id="moveTool" class="tool-button" data-tool="move" title="Drag to move; drag the blue corner handle on an image to resize">Move</button>
+          <label class="button-like">
+            + Image
+            <input id="imageInput" type="file" accept="image/*" hidden />
+          </label>
+          <input id="colorPicker" type="color" value="#1a1a1a" />
+          <input id="widthPicker" type="range" min="1" max="20" value="3" />
+          <button id="undoButton" title="Undo">&#8630;</button>
+          <button id="redoButton" title="Redo">&#8631;</button>
+          <span id="conflictBadge" class="badge" hidden>Autosave failed — retrying</span>
+          <button id="exportButton">Export PDF</button>
+          <button id="deletePageButton">Delete page</button>
+        </div>
+        <div id="canvasWrap">
+          <canvas id="pageCanvas"></canvas>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
